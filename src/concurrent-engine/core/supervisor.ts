@@ -16,6 +16,7 @@ const createSupervisedActor = (
   let currentActor: any = null
   let isRestarting = false
   let pendingMessages: BaseEvent[] = []
+  let lastFailedEvent: BaseEvent | null = null
 
   const start = () => {
     currentActor = createActor(
@@ -24,16 +25,22 @@ const createSupervisedActor = (
         try {
           await handler(msg, ctx)
         } catch (e) {
-          log.error(`Fallo en ${id}: ${msg.payload.id}`)
+          log.error(`Fallo en ${id}: ${JSON.stringify(msg.payload)}`)
+          lastFailedEvent = msg
           handleCrash()
-          throw e // Detiene el loop del actor interno
+          throw e
         }
       },
       bus
     )
     isRestarting = false
 
-    // Al iniciar, volcamos los mensajes acumulados
+    if (lastFailedEvent) {
+      const failed = lastFailedEvent
+      lastFailedEvent = null
+      currentActor.send(failed)
+    }
+
     const queue = [...pendingMessages]
     pendingMessages = []
     queue.forEach((m) => currentActor.send(m))
@@ -48,7 +55,6 @@ const createSupervisedActor = (
       return
     }
 
-    // Recuperamos lo que el actor no procesó
     const leftovers = currentActor.stop()
     pendingMessages = [...leftovers, ...pendingMessages]
 
@@ -72,7 +78,7 @@ const createSupervisedActor = (
         currentActor.send(event)
       }
     },
-    stop: () => currentActor.stop()
+    stop: () => currentActor.stop() // todo: debería decidir si procesar los mensajes o descartar
   }
 }
 

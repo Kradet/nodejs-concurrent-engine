@@ -9,8 +9,8 @@ const createActor = (
   let processing = false
   let active = true
 
-  const process = async () => {
-    if (processing || !active) return
+  const process = async (): Promise<BaseEvent | null> => {
+    if (processing || !active) return null
     processing = true
 
     while (active && mailbox.length > 0) {
@@ -18,12 +18,12 @@ const createActor = (
       try {
         await handler(event, { emit: bus.emit, self: actor })
       } catch (err) {
-        // Al fallar, salimos del bucle y dejamos que el supervisor actúe
         processing = false
-        throw err
+        return event
       }
     }
     processing = false
+    return null
   }
 
   const actor: Actor = {
@@ -31,7 +31,7 @@ const createActor = (
     send: (msg: BaseEvent) => {
       if (!active) return
       mailbox.push(msg)
-      process().catch(() => {}) // El error sube al handler del supervisor
+      process().catch(() => {})
     },
     stop: () => {
       active = false
